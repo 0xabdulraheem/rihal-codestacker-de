@@ -1,5 +1,6 @@
 import os
-import psycopg2
+import json
+from pathlib import Path
 import pandas as pd
 import streamlit as st
 
@@ -8,13 +9,24 @@ st.set_page_config(
     layout="wide",
 )
 
-DB_PARAMS = {
-    "host": os.environ.get("PIPELINE_DB_HOST", "localhost"),
-    "database": os.environ.get("PIPELINE_DB_NAME", "airflow"),
-    "user": os.environ.get("PIPELINE_DB_USER", "airflow"),
-    "password": os.environ.get("PIPELINE_DB_PASSWORD", "airflow"),
-    "port": int(os.environ.get("PIPELINE_DB_PORT", "5432")),
-}
+DEMO_DIR = Path(__file__).parent / "demo_data"
+LIVE_MODE = False
+
+try:
+    import psycopg2
+    DB_PARAMS = {
+        "host": os.environ.get("PIPELINE_DB_HOST", "localhost"),
+        "database": os.environ.get("PIPELINE_DB_NAME", "airflow"),
+        "user": os.environ.get("PIPELINE_DB_USER", "airflow"),
+        "password": os.environ.get("PIPELINE_DB_PASSWORD", "airflow"),
+        "port": int(os.environ.get("PIPELINE_DB_PORT", "5432")),
+        "connect_timeout": 3,
+    }
+    conn = psycopg2.connect(**DB_PARAMS)
+    conn.close()
+    LIVE_MODE = True
+except Exception:
+    LIVE_MODE = False
 
 
 def run_query(sql):
@@ -31,8 +43,19 @@ def safe_query(sql):
         return pd.DataFrame()
 
 
+def load_demo(filename):
+    path = DEMO_DIR / filename
+    if path.exists():
+        with open(path) as f:
+            return pd.DataFrame(json.load(f))
+    return pd.DataFrame()
+
+
 st.title("Shipment Analytics Pipeline")
-st.caption("Real-time observability dashboard for the ETL pipeline")
+if LIVE_MODE:
+    st.caption("Connected to live PostgreSQL database")
+else:
+    st.caption("Showing demo data — run via docker-compose for live results")
 
 tab_analytics, tab_quality, tab_metrics, tab_lineage = st.tabs(
     ["Analytics Output", "Data Quality", "Pipeline Metrics", "Data Lineage"]
@@ -41,10 +64,13 @@ tab_analytics, tab_quality, tab_metrics, tab_lineage = st.tabs(
 with tab_analytics:
     st.header("Shipping Spend by Customer Tier")
 
-    df = safe_query(
-        "SELECT tier, year_month, total_shipping_spend, shipment_count, calculated_at "
-        "FROM analytics.shipping_spend_by_tier ORDER BY year_month, tier"
-    )
+    if LIVE_MODE:
+        df = safe_query(
+            "SELECT tier, year_month, total_shipping_spend, shipment_count, calculated_at "
+            "FROM analytics.shipping_spend_by_tier ORDER BY year_month, tier"
+        )
+    else:
+        df = load_demo("analytics.json")
 
     if df.empty:
         st.warning("No analytics data found. Run the pipeline first.")
@@ -78,10 +104,15 @@ with tab_analytics:
 with tab_quality:
     st.header("Data Quality Checks")
 
-    dq = safe_query(
-        "SELECT check_name, check_result, details, run_timestamp "
-        "FROM analytics.data_quality_log ORDER BY run_timestamp DESC LIMIT 50"
-    )
+    if LIVE_MODE:
+        dq = safe_query(
+            "SELECT check_name, check_result, details, run_timestamp "
+            "FROM analytics.data_quality_log ORDER BY run_timestamp DESC LIMIT 50"
+        )
+    else:
+        dq = load_demo("quality_checks.json")
+        if not dq.empty:
+            dq["run_timestamp"] = pd.to_datetime(dq["run_timestamp"])
 
     if dq.empty:
         st.info("No quality check results yet.")
@@ -114,11 +145,16 @@ with tab_quality:
 with tab_metrics:
     st.header("Pipeline Execution Metrics")
 
-    pm = safe_query(
-        "SELECT run_id, stage, rows_processed, rows_rejected, "
-        "duration_seconds, status, run_timestamp "
-        "FROM analytics.pipeline_metrics ORDER BY run_timestamp DESC LIMIT 100"
-    )
+    if LIVE_MODE:
+        pm = safe_query(
+            "SELECT run_id, stage, rows_processed, rows_rejected, "
+            "duration_seconds, status, run_timestamp "
+            "FROM analytics.pipeline_metrics ORDER BY run_timestamp DESC LIMIT 100"
+        )
+    else:
+        pm = load_demo("pipeline_metrics.json")
+        if not pm.empty:
+            pm["run_timestamp"] = pd.to_datetime(pm["run_timestamp"])
 
     if pm.empty:
         st.info("No pipeline metrics recorded yet.")
@@ -152,17 +188,27 @@ with tab_lineage:
     st.header("Data Lineage")
     st.caption("Row counts through each pipeline layer")
 
-    counts = {}
-    for table, label in [
-        ("raw.shipments", "Raw Shipments"),
-        ("raw.customer_tiers", "Raw Customer Tiers"),
-        ("staging.shipments_deduped", "Staging: Deduped"),
-        ("staging.customer_tiers_resolved", "Staging: Tiers Resolved"),
-        ("staging.shipments_enriched", "Staging: Enriched"),
-        ("analytics.shipping_spend_by_tier", "Analytics Output"),
-    ]:
-        result = safe_query(f"SELECT COUNT(*) as cnt FROM {table}")
-        counts[label] = result["cnt"].iloc[0] if not result.empty else 0
+    if LIVE_MODE:
+        counts = {}
+        for table, label in [
+            ("raw.shipments", "Raw Shipments"),
+            ("raw.customer_tiers", "Raw Customer Tiers"),
+            ("staging.shipments_deduped", "Staging: Deduped"),
+            ("staging.customer_tiers_resolved", "Staging: Tiers Resolved"),
+            ("staging.shipments_enriched", "Staging: Enriched"),
+            ("analytics.shipping_spend_by_tier", "Analytics Output"),
+        ]:
+            result = safe_query(f"SELECT COUNT(*) as cnt FROM {table}")
+            counts[label] = result["cnt"].iloc[0] if not result.empty else 0
+    else:
+        counts = {
+            "Raw Shipments": 21,
+            "Raw Customer Tiers": 7,
+            "Staging: Deduped": 15,
+            "Staging: Tiers Resolved": 6,
+            "Staging: Enriched": 15,
+            "Analytics Output": 10,
+        }
 
     if all(v == 0 for v in counts.values()):
         st.info("No data in pipeline tables. Run the pipeline first.")

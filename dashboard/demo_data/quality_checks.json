@@ -1,0 +1,11 @@
+[
+  {"check_name": "raw_not_empty", "check_result": "pass", "details": "raw.shipments has 21 rows", "run_timestamp": "2026-03-04T04:16:50"},
+  {"check_name": "deduped_less_than_raw", "check_result": "pass", "details": "deduped=15 raw=21", "run_timestamp": "2026-03-04T04:16:50"},
+  {"check_name": "enriched_matches_deduped", "check_result": "pass", "details": "enriched=15 deduped=15", "run_timestamp": "2026-03-04T04:16:50"},
+  {"check_name": "analytics_not_empty", "check_result": "pass", "details": "analytics has 10 tier-month combinations", "run_timestamp": "2026-03-04T04:16:50"},
+  {"check_name": "no_negative_costs_in_staging", "check_result": "pass", "details": "found 0 non-positive costs", "run_timestamp": "2026-03-04T04:16:50"},
+  {"check_name": "no_duplicate_shipment_ids", "check_result": "pass", "details": "found 0 duplicate shipment IDs", "run_timestamp": "2026-03-04T04:16:50"},
+  {"check_name": "no_null_tiers_in_enriched", "check_result": "pass", "details": "found 0 null tiers", "run_timestamp": "2026-03-04T04:16:50"},
+  {"check_name": "no_non_positive_spend_in_analytics", "check_result": "pass", "details": "found 0 non-positive spend rows", "run_timestamp": "2026-03-04T04:16:50"},
+  {"check_name": "analytics_total_matches_enriched", "check_result": "pass", "details": "analytics_sum=549.00 enriched_sum=549.00", "run_timestamp": "2026-03-04T04:16:50"}
+]

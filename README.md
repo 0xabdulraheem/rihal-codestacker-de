@@ -77,7 +77,7 @@ Wait 2-3 minutes for initialization, then access:
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Airflow UI | [http://localhost:8080](http://localhost:8080) | `admin` / `admin` |
-| Dashboard | [http://localhost:8501](http://localhost:8501) | -- |
+| Dashboard | [http://localhost:8501](http://localhost:8501) / [Live Demo](https://rihal-codestacker-de.streamlit.app) | -- |
 | Shipment API | [http://localhost:8000](http://localhost:8000) | -- |
 | PostgreSQL | `localhost:5432` | `airflow` / `airflow` |
 
