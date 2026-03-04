@@ -89,5 +89,22 @@ services:
     command: airflow scheduler
     restart: always
 
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PIPELINE_DB_HOST: postgres
+      PIPELINE_DB_NAME: ${POSTGRES_DB:-airflow}
+      PIPELINE_DB_USER: ${POSTGRES_USER:-airflow}
+      PIPELINE_DB_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+      PIPELINE_DB_PORT: "5432"
+    ports:
+      - "8501:8501"
+    restart: always
+
 volumes:
   postgres-db-volume:

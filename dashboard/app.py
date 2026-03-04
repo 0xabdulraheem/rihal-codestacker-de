@@ -1,0 +1,189 @@
+import os
+import psycopg2
+import pandas as pd
+import streamlit as st
+
+st.set_page_config(
+    page_title="Shipment Analytics Pipeline",
+    layout="wide",
+)
+
+DB_PARAMS = {
+    "host": os.environ.get("PIPELINE_DB_HOST", "localhost"),
+    "database": os.environ.get("PIPELINE_DB_NAME", "airflow"),
+    "user": os.environ.get("PIPELINE_DB_USER", "airflow"),
+    "password": os.environ.get("PIPELINE_DB_PASSWORD", "airflow"),
+    "port": int(os.environ.get("PIPELINE_DB_PORT", "5432")),
+}
+
+
+def run_query(sql):
+    conn = psycopg2.connect(**DB_PARAMS)
+    df = pd.read_sql(sql, conn)
+    conn.close()
+    return df
+
+
+def safe_query(sql):
+    try:
+        return run_query(sql)
+    except Exception:
+        return pd.DataFrame()
+
+
+st.title("Shipment Analytics Pipeline")
+st.caption("Real-time observability dashboard for the ETL pipeline")
+
+tab_analytics, tab_quality, tab_metrics, tab_lineage = st.tabs(
+    ["Analytics Output", "Data Quality", "Pipeline Metrics", "Data Lineage"]
+)
+
+with tab_analytics:
+    st.header("Shipping Spend by Customer Tier")
+
+    df = safe_query(
+        "SELECT tier, year_month, total_shipping_spend, shipment_count, calculated_at "
+        "FROM analytics.shipping_spend_by_tier ORDER BY year_month, tier"
+    )
+
+    if df.empty:
+        st.warning("No analytics data found. Run the pipeline first.")
+    else:
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Spend", f"${df['total_shipping_spend'].sum():,.2f}")
+        col2.metric("Total Shipments", f"{df['shipment_count'].sum():,}")
+        col3.metric("Tier-Month Combinations", len(df))
+
+        st.subheader("Spend Breakdown")
+
+        pivot = df.pivot_table(
+            index="year_month",
+            columns="tier",
+            values="total_shipping_spend",
+            aggfunc="sum",
+            fill_value=0,
+        )
+        st.bar_chart(pivot)
+
+        st.subheader("Detailed Results")
+        st.dataframe(
+            df.style.format({
+                "total_shipping_spend": "${:,.2f}",
+                "shipment_count": "{:,}",
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+with tab_quality:
+    st.header("Data Quality Checks")
+
+    dq = safe_query(
+        "SELECT check_name, check_result, details, run_timestamp "
+        "FROM analytics.data_quality_log ORDER BY run_timestamp DESC LIMIT 50"
+    )
+
+    if dq.empty:
+        st.info("No quality check results yet.")
+    else:
+        latest_run = dq["run_timestamp"].max()
+        latest_checks = dq[dq["run_timestamp"] == latest_run]
+
+        passed = (latest_checks["check_result"] == "pass").sum()
+        failed = (latest_checks["check_result"] == "fail").sum()
+        total = len(latest_checks)
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Checks Passed", f"{passed}/{total}")
+        col2.metric("Checks Failed", str(failed))
+        col3.metric("Last Run", latest_run.strftime("%Y-%m-%d %H:%M:%S"))
+
+        if failed == 0:
+            st.success(f"All {total} quality checks passed")
+        else:
+            st.error(f"{failed} quality check(s) failed")
+
+        st.subheader("Latest Check Results")
+        for _, row in latest_checks.iterrows():
+            icon = "+" if row["check_result"] == "pass" else "-"
+            st.text(f"  [{icon}] {row['check_name']}: {row['details']}")
+
+        st.subheader("Check History")
+        st.dataframe(dq, use_container_width=True, hide_index=True)
+
+with tab_metrics:
+    st.header("Pipeline Execution Metrics")
+
+    pm = safe_query(
+        "SELECT run_id, stage, rows_processed, rows_rejected, "
+        "duration_seconds, status, run_timestamp "
+        "FROM analytics.pipeline_metrics ORDER BY run_timestamp DESC LIMIT 100"
+    )
+
+    if pm.empty:
+        st.info("No pipeline metrics recorded yet.")
+    else:
+        latest_ts = pm["run_timestamp"].max()
+        latest = pm[pm["run_timestamp"] >= latest_ts - pd.Timedelta(seconds=30)]
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Rows Processed", f"{latest['rows_processed'].sum():,}")
+        col2.metric("Total Rows Rejected", f"{latest['rows_rejected'].sum():,}")
+        col3.metric(
+            "Pipeline Duration",
+            f"{latest['duration_seconds'].sum():.1f}s",
+        )
+        col4.metric("Stages", len(latest))
+
+        st.subheader("Stage Breakdown (Latest Run)")
+        for _, row in latest.sort_values("run_timestamp").iterrows():
+            st.text(
+                f"  {row['stage']:.<30s} "
+                f"processed={row['rows_processed']:<6} "
+                f"rejected={row['rows_rejected']:<6} "
+                f"duration={row['duration_seconds']:.3f}s "
+                f"[{row['status']}]"
+            )
+
+        st.subheader("Full History")
+        st.dataframe(pm, use_container_width=True, hide_index=True)
+
+with tab_lineage:
+    st.header("Data Lineage")
+    st.caption("Row counts through each pipeline layer")
+
+    counts = {}
+    for table, label in [
+        ("raw.shipments", "Raw Shipments"),
+        ("raw.customer_tiers", "Raw Customer Tiers"),
+        ("staging.shipments_deduped", "Staging: Deduped"),
+        ("staging.customer_tiers_resolved", "Staging: Tiers Resolved"),
+        ("staging.shipments_enriched", "Staging: Enriched"),
+        ("analytics.shipping_spend_by_tier", "Analytics Output"),
+    ]:
+        result = safe_query(f"SELECT COUNT(*) as cnt FROM {table}")
+        counts[label] = result["cnt"].iloc[0] if not result.empty else 0
+
+    if all(v == 0 for v in counts.values()):
+        st.info("No data in pipeline tables. Run the pipeline first.")
+    else:
+        lineage_df = pd.DataFrame(
+            list(counts.items()), columns=["Layer", "Row Count"]
+        )
+        st.bar_chart(lineage_df.set_index("Layer"))
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Source Layer")
+            st.metric("Raw Shipments", counts["Raw Shipments"])
+            st.metric("Raw Customer Tiers", counts["Raw Customer Tiers"])
+
+        with col2:
+            st.subheader("Processing Funnel")
+            raw = counts["Raw Shipments"]
+            deduped = counts["Staging: Deduped"]
+            enriched = counts["Staging: Enriched"]
+            if raw > 0:
+                st.metric("After Deduplication", deduped, f"{deduped - raw} filtered")
+                st.metric("After Enrichment", enriched)
+                st.metric("Analytics Groups", counts["Analytics Output"])
