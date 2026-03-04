@@ -2,6 +2,7 @@ import os
 import logging
 import requests
 from time import sleep
+from psycopg2.extras import execute_values
 from db import get_connection, get_cursor
 from metrics import timed_stage
 
@@ -37,23 +38,24 @@ def extract_shipments_from_api():
 
         with get_connection() as conn:
             with get_cursor(conn) as cur:
-                cur.execute("BEGIN;")
                 cur.execute("DELETE FROM raw.shipments;")
-                for s in shipments:
-                    cur.execute(
-                        """
-                        INSERT INTO raw.shipments
-                            (shipment_id, customer_id, shipping_cost, shipment_date, status)
-                        VALUES (%s, %s, %s, %s, %s)
-                        """,
-                        (
-                            s.get("shipment_id"),
-                            s.get("customer_id"),
-                            s.get("shipping_cost"),
-                            s.get("shipment_date"),
-                            s.get("status"),
-                        ),
+                rows = [
+                    (
+                        s.get("shipment_id"),
+                        s.get("customer_id"),
+                        s.get("shipping_cost"),
+                        s.get("shipment_date"),
+                        s.get("status"),
                     )
+                    for s in shipments
+                ]
+                execute_values(
+                    cur,
+                    "INSERT INTO raw.shipments "
+                    "(shipment_id, customer_id, shipping_cost, shipment_date, status) "
+                    "VALUES %s",
+                    rows,
+                )
                 conn.commit()
 
         metrics["rows_processed"] = len(shipments)

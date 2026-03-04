@@ -1,3 +1,4 @@
+import time
 from flask import Flask, jsonify, request
 from datetime import datetime
 
@@ -42,7 +43,6 @@ def get_shipments():
         return jsonify({"error": "Internal server error", "message": "Database connection timeout"}), 500
     
     if request_counter % 7 == 0:
-        import time
         time.sleep(5)
     
     start_date = request.args.get('start_date')

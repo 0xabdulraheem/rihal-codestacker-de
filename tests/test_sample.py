@@ -27,26 +27,19 @@ def _query(sql):
     return rows
 
 
-def _exec(sql):
-    conn = _get_conn()
-    cur = conn.cursor()
-    cur.execute(sql)
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
 class TestExtractShipments:
-    def test_raw_shipments_populated(self):
+    @pytest.fixture(autouse=True)
+    def setup_extraction(self):
         from extract_shipments import extract_shipments_from_api
         extract_shipments_from_api()
+
+    def test_raw_shipments_populated(self):
         rows = _query("SELECT COUNT(*) FROM raw.shipments")
         assert rows[0][0] > 0
 
     def test_raw_shipments_idempotent(self):
-        from extract_shipments import extract_shipments_from_api
-        extract_shipments_from_api()
         count_first = _query("SELECT COUNT(*) FROM raw.shipments")[0][0]
+        from extract_shipments import extract_shipments_from_api
         extract_shipments_from_api()
         count_second = _query("SELECT COUNT(*) FROM raw.shipments")[0][0]
         assert count_first == count_second
@@ -132,8 +125,8 @@ class TestTransform:
         unknown = _query(
             "SELECT tier FROM staging.shipments_enriched WHERE customer_id = 'CUST999'"
         )
-        if len(unknown) > 0:
-            assert unknown[0][0] == "Unknown"
+        assert len(unknown) == 1
+        assert unknown[0][0] == "Unknown"
 
     def test_enriched_no_null_tiers(self):
         from transform_data import transform_shipment_data
@@ -210,3 +203,40 @@ class TestLoadAnalytics:
         pattern = re.compile(r"^\d{4}-\d{2}$")
         for row in rows:
             assert pattern.match(row[0])
+
+
+class TestValidateData:
+    @pytest.fixture(autouse=True)
+    def run_full_pipeline(self):
+        from extract_shipments import extract_shipments_from_api
+        from extract_customer_tiers import extract_customer_tiers_from_csv
+        from transform_data import transform_shipment_data
+        from load_analytics import load_analytics_data
+        extract_shipments_from_api()
+        extract_customer_tiers_from_csv()
+        transform_shipment_data()
+        load_analytics_data()
+
+    def test_quality_checks_pass(self):
+        from validate_data import validate_pipeline_output
+        validate_pipeline_output()
+
+    def test_quality_log_populated(self):
+        from validate_data import validate_pipeline_output
+        validate_pipeline_output()
+        rows = _query(
+            "SELECT check_name, check_result FROM analytics.data_quality_log "
+            "ORDER BY run_timestamp DESC LIMIT 9"
+        )
+        assert len(rows) == 9
+        for row in rows:
+            assert row[1] == "pass"
+
+    def test_pipeline_metrics_populated(self):
+        rows = _query(
+            "SELECT stage, status FROM analytics.pipeline_metrics "
+            "ORDER BY run_timestamp DESC LIMIT 4"
+        )
+        assert len(rows) >= 4
+        for row in rows:
+            assert row[1] == "success"

@@ -1,6 +1,7 @@
 import os
 import logging
 import pandas as pd
+from psycopg2.extras import execute_values
 from db import get_connection, get_cursor
 from metrics import timed_stage
 
@@ -25,26 +26,29 @@ def extract_customer_tiers_from_csv():
 
         original_count = len(df)
         df = df.dropna(subset=["customer_id", "tier"])
+        if len(df) == 0:
+            raise ValueError("No valid customer tier records after filtering")
         logger.info("Loaded %d valid tier records from CSV", len(df))
 
         with get_connection() as conn:
             with get_cursor(conn) as cur:
-                cur.execute("BEGIN;")
                 cur.execute("DELETE FROM raw.customer_tiers;")
-                for _, row in df.iterrows():
-                    cur.execute(
-                        """
-                        INSERT INTO raw.customer_tiers
-                            (customer_id, customer_name, tier, tier_updated_date)
-                        VALUES (%s, %s, %s, %s)
-                        """,
-                        (
-                            row["customer_id"],
-                            row["customer_name"],
-                            row["tier"],
-                            row["tier_updated_date"],
-                        ),
+                rows = [
+                    (
+                        row["customer_id"],
+                        row["customer_name"],
+                        row["tier"],
+                        row["tier_updated_date"],
                     )
+                    for _, row in df.iterrows()
+                ]
+                execute_values(
+                    cur,
+                    "INSERT INTO raw.customer_tiers "
+                    "(customer_id, customer_name, tier, tier_updated_date) "
+                    "VALUES %s",
+                    rows,
+                )
                 conn.commit()
 
         metrics["rows_processed"] = len(df)

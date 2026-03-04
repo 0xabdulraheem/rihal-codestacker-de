@@ -11,7 +11,6 @@ def load_analytics_data():
     with timed_stage("load_analytics") as stage_metrics:
         with get_connection() as conn:
             with get_cursor(conn) as cur:
-                cur.execute("BEGIN;")
 
                 cur.execute("DELETE FROM analytics.shipping_spend_by_tier;")
 

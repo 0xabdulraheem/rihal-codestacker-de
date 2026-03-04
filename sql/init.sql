@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS raw.shipments (
     shipping_cost DECIMAL(10,2),
     shipment_date DATE,
     status        VARCHAR(50),
-    loaded_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    loaded_at     TIMESTAMP DEFAULT clock_timestamp()
 );
 
 CREATE TABLE IF NOT EXISTS raw.customer_tiers (

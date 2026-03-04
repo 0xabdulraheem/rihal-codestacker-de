@@ -13,6 +13,7 @@ def get_connection_params():
         "user": os.environ.get("PIPELINE_DB_USER", "airflow"),
         "password": os.environ.get("PIPELINE_DB_PASSWORD", "airflow"),
         "port": int(os.environ.get("PIPELINE_DB_PORT", "5432")),
+        "connect_timeout": 10,
     }
 
 

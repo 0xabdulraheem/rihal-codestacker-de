@@ -9,6 +9,11 @@ graph LR
         E2["extract_customer_tiers"]
         T["transform_data"]
         L["load_analytics"]
+        V["validate_data_quality"]
+        E1 --> T
+        E2 --> T
+        T --> L
+        L --> V
     end
 
     subgraph "PostgreSQL"
@@ -23,22 +28,21 @@ graph LR
         end
         subgraph analytics
             AN["analytics.shipping_spend_by_tier"]
+            PM["analytics.pipeline_metrics"]
+            DQ["analytics.data_quality_log"]
         end
     end
 
     API -->|"HTTP GET + retry"| E1
     CSV -->|"pandas read"| E2
-    E1 -->|"parameterized INSERT"| RS
-    E2 -->|"parameterized INSERT"| RT
-
-    E1 --> T
-    E2 --> T
+    E1 -->|"batch INSERT"| RS
+    E2 -->|"batch INSERT"| RT
 
     RS -->|"DISTINCT ON shipment_id<br/>filter negatives, nulls, cancelled"| SD
     RT -->|"DISTINCT ON customer_id<br/>latest tier_updated_date"| CTR
     SD -->|"LEFT JOIN"| SE
     CTR -->|"LEFT JOIN"| SE
 
-    T --> L
-
     SE -->|"GROUP BY tier, month<br/>SUM shipping_cost"| AN
+    V -->|"9 quality checks"| DQ
+    V -->|"stage metrics"| PM

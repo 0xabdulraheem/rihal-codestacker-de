@@ -22,6 +22,7 @@ x-airflow-common: &airflow-common
     - ./scripts:/opt/airflow/scripts
     - ./sql:/opt/airflow/sql
     - ./data:/opt/airflow/data
+    - ./tests:/opt/airflow/tests
     - ./logs:/opt/airflow/logs
 
 services:

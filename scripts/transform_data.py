@@ -11,8 +11,6 @@ def transform_shipment_data():
     with timed_stage("transform_data") as stage_metrics:
         with get_connection() as conn:
             with get_cursor(conn) as cur:
-                cur.execute("BEGIN;")
-
                 cur.execute("SELECT COUNT(*) FROM raw.shipments")
                 raw_count = cur.fetchone()[0]
 
