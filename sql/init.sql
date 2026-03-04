@@ -60,3 +60,21 @@ CREATE TABLE IF NOT EXISTS analytics.shipping_spend_by_tier (
     calculated_at        TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tier, year_month)
 );
+
+CREATE TABLE IF NOT EXISTS analytics.pipeline_metrics (
+    run_id            VARCHAR(100)  PRIMARY KEY,
+    run_timestamp     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    stage             VARCHAR(50)   NOT NULL,
+    rows_processed    INTEGER       NOT NULL DEFAULT 0,
+    rows_rejected     INTEGER       NOT NULL DEFAULT 0,
+    duration_seconds  DECIMAL(10,3),
+    status            VARCHAR(20)   NOT NULL DEFAULT 'success'
+);
+
+CREATE TABLE IF NOT EXISTS analytics.data_quality_log (
+    check_id          SERIAL        PRIMARY KEY,
+    run_timestamp     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    check_name        VARCHAR(100)  NOT NULL,
+    check_result      VARCHAR(20)   NOT NULL,
+    details           TEXT
+);

@@ -11,6 +11,7 @@ from extract_shipments import extract_shipments_from_api
 from extract_customer_tiers import extract_customer_tiers_from_csv
 from transform_data import transform_shipment_data
 from load_analytics import load_analytics_data
+from validate_data import validate_pipeline_output
 
 default_args = {
     "owner": "data-engineering",
@@ -53,4 +54,9 @@ with DAG(
         python_callable=load_analytics_data,
     )
 
-    [extract_shipments, extract_tiers] >> transform >> load_analytics
+    validate = PythonOperator(
+        task_id="validate_data_quality",
+        python_callable=validate_pipeline_output,
+    )
+
+    [extract_shipments, extract_tiers] >> transform >> load_analytics >> validate

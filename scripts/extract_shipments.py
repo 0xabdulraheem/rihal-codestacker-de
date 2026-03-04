@@ -3,6 +3,7 @@ import logging
 import requests
 from time import sleep
 from db import get_connection, get_cursor
+from metrics import timed_stage
 
 logger = logging.getLogger("airflow.task")
 
@@ -30,28 +31,31 @@ def fetch_shipments_with_retry():
 def extract_shipments_from_api():
     logger.info("Starting shipment extraction from API")
 
-    shipments = fetch_shipments_with_retry()
-    logger.info("Fetched %d shipment records from API", len(shipments))
+    with timed_stage("extract_shipments") as metrics:
+        shipments = fetch_shipments_with_retry()
+        logger.info("Fetched %d shipment records from API", len(shipments))
 
-    with get_connection() as conn:
-        with get_cursor(conn) as cur:
-            cur.execute("BEGIN;")
-            cur.execute("DELETE FROM raw.shipments;")
-            for s in shipments:
-                cur.execute(
-                    """
-                    INSERT INTO raw.shipments
-                        (shipment_id, customer_id, shipping_cost, shipment_date, status)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (
-                        s.get("shipment_id"),
-                        s.get("customer_id"),
-                        s.get("shipping_cost"),
-                        s.get("shipment_date"),
-                        s.get("status"),
-                    ),
-                )
-            conn.commit()
+        with get_connection() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute("BEGIN;")
+                cur.execute("DELETE FROM raw.shipments;")
+                for s in shipments:
+                    cur.execute(
+                        """
+                        INSERT INTO raw.shipments
+                            (shipment_id, customer_id, shipping_cost, shipment_date, status)
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (
+                            s.get("shipment_id"),
+                            s.get("customer_id"),
+                            s.get("shipping_cost"),
+                            s.get("shipment_date"),
+                            s.get("status"),
+                        ),
+                    )
+                conn.commit()
+
+        metrics["rows_processed"] = len(shipments)
 
     logger.info("Shipment extraction completed: %d rows loaded into raw layer", len(shipments))

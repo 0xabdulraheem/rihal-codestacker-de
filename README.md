@@ -6,23 +6,28 @@ Built with Apache Airflow, PostgreSQL, and Docker.
 
 ## Architecture
 
-```
-Sources                  Raw Layer              Staging Layer              Analytics
----------               ---------              -------------              ---------
-REST API  --extract-->  raw.shipments  --deduplicate/filter-->  staging.shipments_deduped
-                                                                          |
-CSV file  --extract-->  raw.customer_tiers --resolve latest-->  staging.customer_tiers_resolved
-                                                                          |
-                                                                    LEFT JOIN
-                                                                          |
-                                                                staging.shipments_enriched
-                                                                          |
-                                                                    GROUP BY tier, month
-                                                                          |
-                                                                analytics.shipping_spend_by_tier
+```mermaid
+flowchart LR
+    subgraph Extract
+        API["REST API"] -->|retry + backoff| RS["raw.shipments"]
+        CSV["customer_tiers.csv"] -->|validate columns| RT["raw.customer_tiers"]
+    end
+    subgraph Transform
+        RS -->|"DISTINCT ON shipment_id\nfilter negatives, nulls, cancelled"| SD["staging.shipments_deduped"]
+        RT -->|"DISTINCT ON customer_id\nlatest tier"| CTR["staging.customer_tiers_resolved"]
+        SD --> SE["staging.shipments_enriched"]
+        CTR -->|LEFT JOIN| SE
+    end
+    subgraph Load
+        SE -->|"DELETE + INSERT\nGROUP BY tier, month"| AN["analytics.shipping_spend_by_tier"]
+    end
+    subgraph Validate
+        AN --> DQ["analytics.data_quality_log"]
+        AN --> PM["analytics.pipeline_metrics"]
+    end
 ```
 
-See `docs/architecture.mermaid` and `docs/data-flow.mermaid` for detailed visual diagrams.
+See `docs/architecture.mermaid` and `docs/data-flow.mermaid` for additional diagrams.
 
 ## Prerequisites
 
@@ -82,10 +87,12 @@ docker-compose down -v
 │   └── shipment_analytics_dag.py
 ├── scripts/
 │   ├── db.py
+│   ├── metrics.py
 │   ├── extract_shipments.py
 │   ├── extract_customer_tiers.py
 │   ├── transform_data.py
-│   └── load_analytics.py
+│   ├── load_analytics.py
+│   └── validate_data.py
 ├── sql/
 │   └── init.sql
 ├── data/
@@ -109,7 +116,7 @@ docker-compose down -v
 
 ## Data Pipeline
 
-The pipeline runs as a single Airflow DAG with four tasks:
+The pipeline runs as a single Airflow DAG with five tasks:
 
 **extract_shipments** - Fetches shipment records from the REST API with retry logic and exponential backoff. Loads raw data into `raw.shipments`.
 
@@ -118,6 +125,36 @@ The pipeline runs as a single Airflow DAG with four tasks:
 **transform_data** - Deduplicates shipments by ID (keeping the most recent), resolves customer tier changes (latest tier per customer), filters out records with negative costs, null customer IDs, and cancelled statuses. Joins shipments with tiers and writes enriched data to `staging.shipments_enriched`.
 
 **load_analytics** - Aggregates enriched data by tier and month. Uses DELETE + INSERT within a single transaction for idempotency. The pipeline produces identical results regardless of how many times it runs.
+
+**validate_data_quality** - Runs nine automated data quality checks after each pipeline run. Results are logged to `analytics.data_quality_log` for auditability. Checks include row count consistency between layers, absence of duplicates, no negative spend, and sum reconciliation between staging and analytics.
+
+## Observability
+
+Every pipeline stage records execution metrics to `analytics.pipeline_metrics`:
+
+| Column | Description |
+|--------|-------------|
+| `stage` | Pipeline step name |
+| `rows_processed` | Number of rows successfully processed |
+| `rows_rejected` | Number of rows filtered or rejected |
+| `duration_seconds` | Wall-clock time for the stage |
+| `status` | success or failure |
+
+Data quality checks are logged to `analytics.data_quality_log` with pass/fail results and details.
+
+Query recent pipeline health:
+
+```sql
+SELECT stage, rows_processed, rows_rejected, duration_seconds, status
+FROM analytics.pipeline_metrics
+ORDER BY run_timestamp DESC
+LIMIT 20;
+
+SELECT check_name, check_result, details
+FROM analytics.data_quality_log
+ORDER BY run_timestamp DESC
+LIMIT 20;
+```
 
 ## Configuration
 

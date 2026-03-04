@@ -195,3 +195,21 @@
 - **Description:** SHP011 references CUST999, which does not exist in the customer tiers CSV. The LEFT JOIN correctly produces a NULL tier, but COALESCE maps it to "Unknown" without any logging or flagging.
 - **Impact:** Unknown customers are silently absorbed into analytics. There is no mechanism to alert data stewards that new customers are appearing in shipment data without corresponding tier assignments.
 - **Mitigation:** The transform step preserves "Unknown" tier mapping via COALESCE for completeness, and the enriched table's NOT NULL constraint on `tier` ensures no nulls slip through. The logging output includes record counts at each stage, making it visible when records fall into the "Unknown" bucket.
+
+---
+
+## Issue 23: No Pipeline Observability or Metrics
+
+- **Severity:** Medium
+- **Description:** The original pipeline had no mechanism to track execution statistics, row counts per stage, processing duration, or data quality over time. Operators had no way to detect gradual data drift or degraded performance without manually inspecting logs.
+- **Impact:** Silent failures (e.g., the API returning fewer records than expected) would go unnoticed. There was no historical record of pipeline health to support capacity planning or incident investigation.
+- **Mitigation:** Added `analytics.pipeline_metrics` table that records rows processed, rows rejected, duration, and status for each pipeline stage on every run. Added `analytics.data_quality_log` table that records pass/fail results for nine automated quality checks. Created `scripts/metrics.py` with a `timed_stage` context manager that automatically captures timing and row counts. Created `scripts/validate_data.py` as a dedicated DAG step that runs after the analytics load.
+
+---
+
+## Issue 24: No Automated Data Quality Checks
+
+- **Severity:** Medium
+- **Description:** The original pipeline had no post-load validation. There was no automated way to verify that the output was correct, consistent, or complete after each run.
+- **Impact:** Data quality problems introduced by upstream changes (e.g., the API adding new fields, the CSV format changing) would silently propagate to the analytics layer and into downstream reports.
+- **Mitigation:** Added a `validate_data_quality` task as the final step in the DAG. It runs nine checks: raw table not empty, deduped count less than or equal to raw count, enriched count matches deduped count, analytics not empty, no negative costs in staging, no duplicate shipment IDs, no null tiers in enriched data, no non-positive spend in analytics, and sum reconciliation between staging and analytics layers. Each check result is persisted to `analytics.data_quality_log`.

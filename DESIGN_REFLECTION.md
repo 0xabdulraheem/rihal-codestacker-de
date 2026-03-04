@@ -50,11 +50,11 @@ At 100x the current volume (roughly 2,000 shipments and 600 tier records), the f
 
 **Slowly changing dimension type 2 for customer tiers.** Instead of picking the latest tier, maintain a history table with validity date ranges. Join shipments to the tier that was active on the shipment date. This produces more accurate historical analytics.
 
-**Data quality framework.** Add a dedicated validation step between extract and transform that runs configurable rules (null checks, range checks, referential integrity checks) and writes violations to a quarantine table with alerting.
+**Data quality framework expansion.** The current `validate_data_quality` step runs nine checks and logs results to `analytics.data_quality_log`. With more time, I would make checks configurable via YAML, add a quarantine table for rejected records rather than simply filtering them, and integrate alerting (Slack/email) when checks fail.
 
 **Airflow Connections for credential management.** Instead of environment variables, use Airflow's built-in Connection objects to store database and API credentials. This provides encryption at rest, UI-based management, and audit logging of credential access.
 
-**Monitoring and alerting.** Add row count assertions between pipeline stages (e.g., "enriched row count should be within 10% of raw row count"), integrate with a metrics system (Prometheus/StatsD), and configure Airflow email alerts on failure.
+**External metrics integration.** The `analytics.pipeline_metrics` table provides a solid internal record, but I would add Prometheus/StatsD exporters and Grafana dashboards for real-time pipeline monitoring. Airflow email alerts on DAG failure would complement the quality checks.
 
 ---
 
