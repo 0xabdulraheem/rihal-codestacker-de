@@ -1,7 +1,7 @@
 [
-  {"run_id": "extract_shipments_a1b2c3", "stage": "extract_shipments", "rows_processed": 21, "rows_rejected": 0, "duration_seconds": 1.234, "status": "success", "run_timestamp": "2026-03-04T04:16:44"},
-  {"run_id": "extract_customer_tiers_d4e5f6", "stage": "extract_customer_tiers", "rows_processed": 7, "rows_rejected": 0, "duration_seconds": 0.089, "status": "success", "run_timestamp": "2026-03-04T04:16:44"},
-  {"run_id": "transform_data_g7h8i9", "stage": "transform_data", "rows_processed": 15, "rows_rejected": 6, "duration_seconds": 0.156, "status": "success", "run_timestamp": "2026-03-04T04:16:45"},
-  {"run_id": "load_analytics_j0k1l2", "stage": "load_analytics", "rows_processed": 10, "rows_rejected": 0, "duration_seconds": 0.078, "status": "success", "run_timestamp": "2026-03-04T04:16:46"},
-  {"run_id": "validate_data_quality_m3n4o5", "stage": "validate_data_quality", "rows_processed": 9, "rows_rejected": 0, "duration_seconds": 0.045, "status": "success", "run_timestamp": "2026-03-04T04:16:50"}
+  {"run_id": "extract_shipments_9246afae6675", "stage": "extract_shipments", "rows_processed": 21, "rows_rejected": 0, "duration_seconds": 0.011, "status": "success", "run_timestamp": "2026-03-04T04:18:35.153385"},
+  {"run_id": "extract_customer_tiers_b556e0d76b11", "stage": "extract_customer_tiers", "rows_processed": 7, "rows_rejected": 0, "duration_seconds": 0.013, "status": "success", "run_timestamp": "2026-03-04T04:18:35.172633"},
+  {"run_id": "transform_data_91475b83a48e", "stage": "transform_data", "rows_processed": 16, "rows_rejected": 5, "duration_seconds": 0.010, "status": "success", "run_timestamp": "2026-03-04T04:18:35.187609"},
+  {"run_id": "load_analytics_9ab43eb8d13f", "stage": "load_analytics", "rows_processed": 10, "rows_rejected": 0, "duration_seconds": 0.007, "status": "success", "run_timestamp": "2026-03-04T04:18:35.200034"},
+  {"run_id": "validate_data_quality_e817fd2f5af3", "stage": "validate_data_quality", "rows_processed": 9, "rows_rejected": 0, "duration_seconds": 0.057, "status": "success", "run_timestamp": "2026-03-04T04:18:35.128826"}
 ]

@@ -55,7 +55,7 @@ st.title("Shipment Analytics Pipeline")
 if LIVE_MODE:
     st.caption("Connected to live PostgreSQL database")
 else:
-    st.caption("Showing demo data — run via docker-compose for live results")
+    st.caption("Displaying pipeline output from latest run — run via docker-compose for live database connection")
 
 tab_analytics, tab_quality, tab_metrics, tab_lineage = st.tabs(
     ["Analytics Output", "Data Quality", "Pipeline Metrics", "Data Lineage"]

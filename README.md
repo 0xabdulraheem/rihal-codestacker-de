@@ -127,12 +127,6 @@ flowchart LR
     E2["extract_customer_tiers"] --> T
     T --> L["load_analytics"]
     L --> V["validate_data_quality"]
-
-    style E1 fill:#e3f2fd
-    style E2 fill:#e3f2fd
-    style T fill:#fff3e0
-    style L fill:#e8f5e9
-    style V fill:#fce4ec
 ```
 
 | Task | Description |
