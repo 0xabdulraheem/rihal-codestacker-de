@@ -88,11 +88,11 @@ def validate_pipeline_output():
                 f"found {neg_spend} non-positive spend rows",
             )
 
-            analytics_total = cur.execute(
+            cur.execute(
                 "SELECT SUM(total_shipping_spend) FROM analytics.shipping_spend_by_tier"
             )
             analytics_total = cur.fetchone()[0] or 0
-            enriched_total_row = cur.execute(
+            cur.execute(
                 "SELECT SUM(shipping_cost) FROM staging.shipments_enriched"
             )
             enriched_total = cur.fetchone()[0] or 0
