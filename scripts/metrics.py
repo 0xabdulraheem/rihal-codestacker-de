@@ -54,10 +54,13 @@ def timed_stage(stage_name):
         raise
     finally:
         duration = time.time() - start
-        record_metric(
-            stage_name,
-            result["rows_processed"],
-            result["rows_rejected"],
-            duration,
-            result["status"],
-        )
+        try:
+            record_metric(
+                stage_name,
+                result["rows_processed"],
+                result["rows_rejected"],
+                duration,
+                result["status"],
+            )
+        except Exception as metric_exc:
+            logger.error("Failed to record metric for %s: %s", stage_name, metric_exc)
