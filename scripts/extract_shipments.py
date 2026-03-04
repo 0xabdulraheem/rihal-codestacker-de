@@ -1,55 +1,57 @@
-"""
-Extract shipment data from the external API
-"""
+import os
+import logging
 import requests
-import psycopg2
-from datetime import datetime
+from time import sleep
+from db import get_connection, get_cursor
+
+logger = logging.getLogger("airflow.task")
+
+API_BASE_URL = os.environ.get("SHIPMENT_API_URL", "http://api:8000")
+MAX_RETRIES = 3
+RETRY_BACKOFF = 2
+
+
+def fetch_shipments_with_retry():
+    url = f"{API_BASE_URL}/api/shipments"
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            payload = response.json()
+            return payload["data"]
+        except (requests.RequestException, KeyError, ValueError) as exc:
+            logger.warning("API attempt %d/%d failed: %s", attempt, MAX_RETRIES, exc)
+            if attempt < MAX_RETRIES:
+                sleep(RETRY_BACKOFF ** attempt)
+            else:
+                raise RuntimeError(f"Shipment API unreachable after {MAX_RETRIES} attempts") from exc
+
 
 def extract_shipments_from_api():
-    """
-    Fetch shipment data from the external API and load into database
-    """
-    print("Starting shipment data extraction...")
-    
-    # Connect to database
-    conn = psycopg2.connect(
-        host="postgres",
-        database="airflow",
-        user="airflow",
-        password="airflow"
-    )
-    cursor = conn.cursor()
-    
-    # Fetch data from external API
-    response = requests.get("http://api:8000/api/shipments")
-    data = response.json()
-    shipments = data['data']
-    
-    print(f"Fetched {len(shipments)} shipments from API")
-    
-    # Create staging table
-    cursor.execute("DROP TABLE IF EXISTS staging.shipments;")
-    cursor.execute("""
-        CREATE TABLE staging.shipments (
-            shipment_id VARCHAR(50),
-            customer_id VARCHAR(50),
-            shipping_cost DECIMAL(10,2),
-            shipment_date DATE,
-            status VARCHAR(50),
-            loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    
-    # Load data into staging
-    for shipment in shipments:
-        cursor.execute(f"""
-            INSERT INTO staging.shipments (shipment_id, customer_id, shipping_cost, shipment_date, status)
-            VALUES ('{shipment['shipment_id']}', '{shipment['customer_id']}', 
-                    {shipment['shipping_cost']}, '{shipment['shipment_date']}', '{shipment['status']}');
-        """)
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
-    print("Shipment data extraction completed")
+    logger.info("Starting shipment extraction from API")
+
+    shipments = fetch_shipments_with_retry()
+    logger.info("Fetched %d shipment records from API", len(shipments))
+
+    with get_connection() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute("BEGIN;")
+            cur.execute("DELETE FROM raw.shipments;")
+            for s in shipments:
+                cur.execute(
+                    """
+                    INSERT INTO raw.shipments
+                        (shipment_id, customer_id, shipping_cost, shipment_date, status)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        s.get("shipment_id"),
+                        s.get("customer_id"),
+                        s.get("shipping_cost"),
+                        s.get("shipment_date"),
+                        s.get("status"),
+                    ),
+                )
+            conn.commit()
+
+    logger.info("Shipment extraction completed: %d rows loaded into raw layer", len(shipments))
