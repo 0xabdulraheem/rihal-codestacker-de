@@ -1,71 +1,78 @@
-"""
-Shipment Analytics Pipeline
-Extracts shipment data from API and customer tiers from CSV,
-then generates analytics on shipping spend by customer tier
-"""
+import sys
+import os
+import logging
+from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from datetime import datetime, timedelta
-import sys
 
-# Add scripts directory to path
-sys.path.insert(0, '/opt/airflow/scripts')
+dag_logger = logging.getLogger("airflow.task")
 
-# Import pipeline functions
+
+def _on_failure(context):
+    dag_id = context["dag"].dag_id
+    task_id = context["task_instance"].task_id
+    execution_date = context["execution_date"]
+    exception = context.get("exception", "unknown")
+    dag_logger.error(
+        "PIPELINE FAILURE: dag=%s task=%s execution_date=%s error=%s",
+        dag_id, task_id, execution_date, exception,
+    )
+
+sys.path.insert(0, os.path.join(os.environ.get("AIRFLOW_HOME", "/opt/airflow"), "scripts"))
+
 from extract_shipments import extract_shipments_from_api
 from extract_customer_tiers import extract_customer_tiers_from_csv
 from transform_data import transform_shipment_data
 from load_analytics import load_analytics_data
+from validate_data import validate_pipeline_output
 
-# Default args
 default_args = {
-    'owner': 'data-engineering',
-    'depends_on_past': False,
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=1),
+    "owner": "data-engineering",
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 3,
+    "retry_delay": timedelta(minutes=2),
+    "execution_timeout": timedelta(minutes=15),
 }
 
-# Create DAG
-dag = DAG(
-    'shipment_analytics_pipeline',
+with DAG(
+    dag_id="shipment_analytics_pipeline",
     default_args=default_args,
-    description='Process shipment data and generate analytics',
-    schedule_interval='@daily',
+    description="ETL pipeline: shipment spend analytics by customer tier per month",
+    schedule_interval="@daily",
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=['analytics', 'shipments'],
-)
+    max_active_runs=1,
+    tags=["analytics", "shipments"],
+    on_failure_callback=_on_failure,
+) as dag:
 
-# Task 1: Extract shipment data from API
-extract_shipments_task = PythonOperator(
-    task_id='extract_shipments',
-    python_callable=extract_shipments_from_api,
-    dag=dag,
-)
+    extract_shipments = PythonOperator(
+        task_id="extract_shipments",
+        python_callable=extract_shipments_from_api,
+    )
 
-# Task 2: Extract customer tier data from CSV
-extract_tiers_task = PythonOperator(
-    task_id='extract_customer_tiers',
-    python_callable=extract_customer_tiers_from_csv,
-    dag=dag,
-)
+    extract_tiers = PythonOperator(
+        task_id="extract_customer_tiers",
+        python_callable=extract_customer_tiers_from_csv,
+    )
 
-# Task 3: Transform and join data
-transform_task = PythonOperator(
-    task_id='transform_data',
-    python_callable=transform_shipment_data,
-    dag=dag,
-)
+    transform = PythonOperator(
+        task_id="transform_data",
+        python_callable=transform_shipment_data,
+    )
 
-# Task 4: Load analytics data
-load_analytics_task = PythonOperator(
-    task_id='load_analytics',
-    python_callable=load_analytics_data,
-    dag=dag,
-)
+    load_analytics = PythonOperator(
+        task_id="load_analytics",
+        python_callable=load_analytics_data,
+    )
 
-# Define task dependencies
-[extract_shipments_task, extract_tiers_task] >> transform_task >> load_analytics_task
+    validate = PythonOperator(
+        task_id="validate_data_quality",
+        python_callable=validate_pipeline_output,
+        sla=timedelta(minutes=10),
+    )
+
+    [extract_shipments, extract_tiers] >> transform >> load_analytics >> validate

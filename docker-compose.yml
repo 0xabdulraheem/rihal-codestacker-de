@@ -1,13 +1,36 @@
-version: '3.8'
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/${POSTGRES_DB:-airflow}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "False"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+    PIPELINE_DB_HOST: postgres
+    PIPELINE_DB_NAME: ${POSTGRES_DB:-airflow}
+    PIPELINE_DB_USER: ${POSTGRES_USER:-airflow}
+    PIPELINE_DB_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+    PIPELINE_DB_PORT: "5432"
+    SHIPMENT_API_URL: http://api:8000
+    CUSTOMER_TIERS_CSV: /opt/airflow/data/customer_tiers.csv
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./scripts:/opt/airflow/scripts
+    - ./sql:/opt/airflow/sql
+    - ./data:/opt/airflow/data
+    - ./tests:/opt/airflow/tests
+    - ./logs:/opt/airflow/logs
 
 services:
-  # PostgreSQL Database
   postgres:
     image: postgres:13
     environment:
-      - POSTGRES_USER=airflow
-      - POSTGRES_PASSWORD=airflow
-      - POSTGRES_DB=airflow
+      POSTGRES_USER: ${POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: ${POSTGRES_DB:-airflow}
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -19,7 +42,6 @@ services:
       retries: 5
     restart: always
 
-  # Mock Shipment API
   api:
     build:
       context: ./api
@@ -33,59 +55,57 @@ services:
       timeout: 5s
       retries: 3
 
-  # Airflow Webserver
   airflow-webserver:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *airflow-common
     depends_on:
-      - postgres
-      - api
-    environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
-      - AIRFLOW_UID=50000
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./scripts:/opt/airflow/scripts
-      - ./sql:/opt/airflow/sql
-      - ./data:/opt/airflow/data
-      - ./logs:/opt/airflow/logs
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
     ports:
       - "8080:8080"
     command: >
       bash -c "airflow db init &&
                airflow db upgrade &&
-               airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true &&
+               airflow users create
+                 --username admin
+                 --password ${AIRFLOW_ADMIN_PASSWORD:-admin}
+                 --firstname Admin
+                 --lastname User
+                 --role Admin
+                 --email admin@example.com || true &&
                airflow webserver"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
 
-  # Airflow Scheduler
   airflow-scheduler:
+    <<: *airflow-common
+    depends_on:
+      airflow-webserver:
+        condition: service_healthy
+    command: airflow scheduler
+    restart: always
+
+  dashboard:
     build:
-      context: .
+      context: ./dashboard
       dockerfile: Dockerfile
     depends_on:
-      - postgres
-      - airflow-webserver
+      postgres:
+        condition: service_healthy
     environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW_UID=50000
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./scripts:/opt/airflow/scripts
-      - ./sql:/opt/airflow/sql
-      - ./data:/opt/airflow/data
-      - ./logs:/opt/airflow/logs
-    command: airflow scheduler
+      PIPELINE_DB_HOST: postgres
+      PIPELINE_DB_NAME: ${POSTGRES_DB:-airflow}
+      PIPELINE_DB_USER: ${POSTGRES_USER:-airflow}
+      PIPELINE_DB_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+      PIPELINE_DB_PORT: "5432"
+    ports:
+      - "8501:8501"
+    restart: always
 
 volumes:
   postgres-db-volume:
