@@ -1,0 +1,7 @@
+[
+  {"quarantine_id": 1, "source_table": "raw.shipments", "record_data": {"shipment_id": "SHP012", "customer_id": "CUST002", "shipping_cost": -5.0, "shipment_date": "2024-02-22", "status": "delivered"}, "rejection_reason": "invalid_shipping_cost", "quarantined_at": "2024-03-01T10:00:00"},
+  {"quarantine_id": 2, "source_table": "raw.shipments", "record_data": {"shipment_id": "SHP013", "customer_id": "CUST004", "shipping_cost": 0.0, "shipment_date": "2024-02-25", "status": "delivered"}, "rejection_reason": "invalid_shipping_cost", "quarantined_at": "2024-03-01T10:00:00"},
+  {"quarantine_id": 3, "source_table": "raw.shipments", "record_data": {"shipment_id": "SHP014", "customer_id": null, "shipping_cost": 30.0, "shipment_date": "2024-02-28", "status": "delivered"}, "rejection_reason": "null_customer_id", "quarantined_at": "2024-03-01T10:00:00"},
+  {"quarantine_id": 4, "source_table": "raw.shipments", "record_data": {"shipment_id": "SHP017", "customer_id": "CUST005", "shipping_cost": 50.0, "shipment_date": "2024-03-10", "status": "cancelled"}, "rejection_reason": "cancelled_shipment", "quarantined_at": "2024-03-01T10:00:00"},
+  {"quarantine_id": 5, "source_table": "raw.shipments", "record_data": {"shipment_id": "SHP002", "customer_id": "CUST002", "shipping_cost": 45.0, "shipment_date": "2024-01-16", "status": "delivered", "loaded_at": "2024-03-01T09:59:58"}, "rejection_reason": "duplicate_shipment_id", "quarantined_at": "2024-03-01T10:00:00"}
+]
