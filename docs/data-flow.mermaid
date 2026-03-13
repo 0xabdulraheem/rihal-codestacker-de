@@ -1,0 +1,22 @@
+flowchart TB
+    subgraph Extract
+        direction LR
+        A1["Shipment API"] -->|"retry with backoff"| B1["raw.shipments"]
+        A2["CSV file"] -->|"validate columns"| B2["raw.customer_tiers"]
+    end
+
+    subgraph Transform
+        direction LR
+        B1 -->|"DISTINCT ON shipment_id<br/>WHERE cost > 0<br/>WHERE status != cancelled<br/>WHERE customer_id IS NOT NULL"| C1["staging.shipments_deduped"]
+        B2 -->|"DISTINCT ON customer_id<br/>ORDER BY tier_updated_date DESC"| C2["staging.customer_tiers_resolved"]
+        C1 -->|"LEFT JOIN on customer_id<br/>COALESCE tier to Unknown"| C3["staging.shipments_enriched"]
+        C2 --> C3
+    end
+
+    subgraph Load
+        C3 -->|"DELETE + INSERT<br/>in single transaction<br/>GROUP BY tier, month"| D1["analytics.shipping_spend_by_tier"]
+    end
+
+    style Extract fill:#e8f4f8,stroke:#2196F3
+    style Transform fill:#fff3e0,stroke:#FF9800
+    style Load fill:#e8f5e9,stroke:#4CAF50

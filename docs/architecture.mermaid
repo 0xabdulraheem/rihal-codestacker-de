@@ -1,0 +1,50 @@
+graph LR
+    subgraph Sources
+        API["Shipment REST API<br/>port 8000"]
+        CSV["customer_tiers.csv"]
+    end
+
+    subgraph "Airflow DAG: shipment_analytics_pipeline"
+        E1["extract_shipments"]
+        E2["extract_customer_tiers"]
+        T["transform_data"]
+        L["load_analytics"]
+        V["validate_data_quality"]
+        E1 --> T
+        E2 --> T
+        T --> L
+        L --> V
+    end
+
+    subgraph "PostgreSQL"
+        subgraph raw
+            RS["raw.shipments"]
+            RT["raw.customer_tiers"]
+        end
+        subgraph staging
+            SD["staging.shipments_deduped"]
+            CTR["staging.customer_tiers_resolved"]
+            SE["staging.shipments_enriched"]
+            QR["staging.quarantine"]
+        end
+        subgraph analytics
+            AN["analytics.shipping_spend_by_tier"]
+            PM["analytics.pipeline_metrics"]
+            DQ["analytics.data_quality_log"]
+        end
+    end
+
+    API -->|"HTTP GET + retry"| E1
+    CSV -->|"pandas read"| E2
+    E1 -->|"batch INSERT"| RS
+    E2 -->|"batch INSERT"| RT
+
+    RS -->|"DISTINCT ON shipment_id<br/>filter negatives, nulls, cancelled"| SD
+    RS -->|"rejected records<br/>with reasons"| QR
+    RT -->|"DISTINCT ON customer_id<br/>latest tier_updated_date"| CTR
+    SD -->|"LEFT JOIN"| SE
+    CTR -->|"LEFT JOIN"| SE
+
+    SE -->|"GROUP BY tier, month<br/>SUM shipping_cost"| AN
+    V -->|"10 quality checks"| DQ
+    V -->|"stage metrics"| PM
